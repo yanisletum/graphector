@@ -1,0 +1,182 @@
+# 🔗 Graphector
+
+**Мульти-агентный code review сервис на LangGraph с циклической валидацией качества**
+
+![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)
+![LangGraph](https://img.shields.io/badge/LangGraph-0.2.28-1C3C3C)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi)
+![Gemini](https://img.shields.io/badge/LLM-Google%20Gemini-8E75B2?logo=google)
+![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker)
+![License](https://img.shields.io/badge/license-MIT-lightgrey)
+
+Graphector принимает код, прогоняет его через три параллельных AI-агента (безопасность, стиль, логика), генерирует отчёт и **сам проверяет качество собственного отчёта**, перегенерируя его в цикле, если результат недостаточно хорош.
+
+---
+
+## 🎯 Зачем этот проект
+
+Большинство демо-проектов с LLM делают линейный пайплайн: запрос → ответ. Graphector построен иначе — это **граф состояний** с параллельным выполнением, условным ветвлением и циклом обратной связи, что демонстрирует:
+
+- Параллельную работу нескольких агентов над одной задачей
+- Передачу и накопление состояния между узлами графа
+- Самопроверку и автоматическую перегенерацию результата (self-correcting loop)
+- Production-ready обвязку: кэширование, rate limiting, стриминг, Docker
+
+---
+
+## 🧠 Архитектура графа
+
+```mermaid
+graph TD
+    START([START]) --> parse[parse_code]
+    parse --> sec[security_check]
+    parse --> style[style_check]
+    parse --> logic[logic_check]
+    sec --> gen[generate_report]
+    style --> gen
+    logic --> gen
+    gen --> val[validate_report]
+    val -->|score < 7 and attempts < 3| gen
+    val -->|score >= 7 or attempts >= 3| END([END])
+```
+
+**Узлы графа:**
+
+| Узел | Роль |
+|---|---|
+| `parse_code` | Определяет язык программирования |
+| `security_check` | Ищет уязвимости: SQL injection, секреты в коде, опасные функции |
+| `style_check` | Проверяет стиль: именование, дублирование, magic numbers |
+| `logic_check` | Ищет логические ошибки: сложность, обработку ошибок, утечки |
+| `generate_report` | Собирает все находки в единый структурированный отчёт |
+| `validate_report` | Оценивает качество отчёта 0–10 и решает: вернуть в `generate_report` или завершить |
+
+---
+
+## ⚙️ Стек
+
+- **LangGraph** — оркестрация мульти-агентного графа
+- **Google Gemini API** (`gemini-1.5-flash`) — LLM для анализа кода
+- **FastAPI** — REST API + Server-Sent Events для live-прогресса
+- **aiogram 3** — Telegram-бот интерфейс
+- **Redis** — кэширование результатов по хэшу кода
+- **slowapi** — rate limiting (5 запросов/мин с IP)
+- **Docker / docker-compose** — контейнеризация, деплой на Amvera
+
+---
+
+## 🚀 Быстрый старт
+
+### Через Docker (рекомендуется)
+
+```bash
+git clone https://github.com/your-username/graphector.git
+cd graphector
+cp .env.example .env
+# заполни GEMINI_API_KEY и TELEGRAM_BOT_TOKEN в .env
+
+docker-compose up --build
+```
+
+API будет доступен на `http://localhost:8000/docs`
+
+### Локально (WSL2 / Linux)
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Redis нужен локально
+sudo apt install -y redis-server
+redis-server --daemonize yes
+
+cp .env.example .env
+# заполни ключи
+
+python -m app.main
+```
+
+---
+
+## 📡 API
+
+### `POST /api/v1/review`
+
+```bash
+curl -X POST http://localhost:8000/api/v1/review \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "def get_user(id):\n    query = f\"SELECT * FROM users WHERE id={id}\"\n    return db.execute(query)"
+  }'
+```
+
+```json
+{
+  "language": "python",
+  "issues": {
+    "security": ["- SQL injection через f-string в запросе"],
+    "style": ["- Отсутствует docstring", "- Параметр 'id' затеняет builtin"],
+    "logic": []
+  },
+  "report": "...",
+  "quality_score": 8,
+  "attempts": 1,
+  "total_issues": 2,
+  "from_cache": false
+}
+```
+
+### `GET /api/v1/review/stream?code=...`
+
+Server-Sent Events — прогресс выполнения графа в реальном времени, узел за узлом.
+
+### `GET /api/v1/health`
+
+Health-check для Docker / Amvera.
+
+---
+
+## 🤖 Telegram-бот
+
+Запускается автоматически вместе с FastAPI (через `lifespan`). Просто отправь код сообщением — бот вернёт структурированный отчёт.
+
+---
+
+## 📂 Структура проекта
+
+```
+graphector/
+├── app/
+│   ├── graph/
+│   │   ├── state.py      # ReviewState — состояние графа
+│   │   ├── nodes.py       # узлы: parse, security/style/logic check, report, validate
+│   │   ├── router.py      # условная логика циклов
+│   │   └── builder.py     # сборка StateGraph
+│   ├── bot/
+│   │   └── handlers.py    # aiogram handlers
+│   ├── api/
+│   │   ├── schemas.py     # Pydantic модели
+│   │   └── routes.py      # FastAPI endpoints
+│   ├── cache.py            # Redis кэш по SHA256 кода
+│   ├── limiter.py          # rate limiting
+│   └── main.py              # точка входа: FastAPI + бот вместе
+├── Dockerfile
+├── docker-compose.yml
+└── requirements.txt
+```
+
+---
+
+## 🛣️ Roadmap
+
+- [ ] Поддержка diff-режима (review только изменённых строк PR)
+- [ ] GitHub Action для автоматического ревью pull request'ов
+- [ ] Веб-интерфейс с live-прогрессом через SSE
+- [ ] Поддержка локальных моделей через Ollama как fallback
+
+---
+
+## 📄 Лицензия
+
+MIT
