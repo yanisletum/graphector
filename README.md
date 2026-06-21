@@ -1,4 +1,3 @@
-cat > README.md << 'EOF'
 # 🔗 Graphector
 
 **Мульти-агентный code review сервис на LangGraph с циклической валидацией качества**
@@ -157,41 +156,27 @@ Health-check для Docker / Amvera.
 ---
 
 ## 📂 Структура проекта
-graphector/ 
 
-├── app/ 
-
-│ ├── Graph/ 
-
-│ │ ├── state.py # ReviewState — состояние графа 
-
-│ │ ├── nodes.py # узлы: parse, проверка безопасности/стиля/логики, отчет, валидация 
-
-│ │ ├── router.py # условная логика циклов 
-
-│ │ └── builder.py # сборка StateGraph 
-
-│ ├── bot/ 
-
-│ │ └── handlers.py # обработчики айограмм 
-
-│ ├── api/ 
-
-│ │ ├── Schemas.py # Pydantic модели 
-
-│ │ └── маршруты.py # Конечные точки FastAPI 
-
-│ ├── кэш.py # Redis кэш по коду SHA256 
-
-│ ├── limiter.py # ограничение скорости 
-
-│ └── main.py # точка получения: FastAPI + бот вместе 
-
-├── Dockerfile 
-
-├── docker-compose.yml 
-
-└── требования.txt
+```
+graphector/
+├── app/
+│   ├── graph/
+│   │   ├── state.py      # ReviewState — состояние графа
+│   │   ├── nodes.py       # узлы: parse, security/style/logic check, report, validate
+│   │   ├── router.py      # условная логика циклов
+│   │   └── builder.py     # сборка StateGraph
+│   ├── bot/
+│   │   └── handlers.py    # aiogram handlers
+│   ├── api/
+│   │   ├── schemas.py     # Pydantic модели
+│   │   └── routes.py      # FastAPI endpoints
+│   ├── cache.py            # Redis кэш по SHA256 кода
+│   ├── limiter.py          # rate limiting
+│   └── main.py              # точка входа: FastAPI + бот вместе
+├── Dockerfile
+├── docker-compose.yml
+└── requirements.txt
+```
 
 ---
 
@@ -207,5 +192,3 @@ graphector/
 ## 📄 Лицензия
 
 MIT
-EOF
-echo "README обновлён"
